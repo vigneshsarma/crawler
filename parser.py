@@ -4,17 +4,21 @@ from HTMLParser import HTMLParser
 # create a subclass and override the handler methods
 class LinkFinder(HTMLParser):
     def start_parsing(self,content,url = ""):
+        #setup variables, and prepare to parse.
         self.data = ""
         self.links = []
         self.entered_title=False
         self.title = ""
         if url:
             self.url = url
+
+        #parse contets.
         self.feed(content)
         if self.title== "":
             self.title = self.data[0:20]
-            
+         
         return self.links,self.data,self.title
+
     def handle_starttag(self, tag, attrs):
         #print "Encountered a start tag:", tag, attrs
         if tag== 'a':
@@ -23,13 +27,16 @@ class LinkFinder(HTMLParser):
                     #print at[1]
                     if at[1].startswith("http://"):
                         self.links.append(at[1])
+                    elif self.url.endswith(at[1]):pass
                     elif at[1].startswith("/"):
                         #ind = self.url.rfind('/')
                         self.links.append( self.url+at[1])
                     else:
-                        print at[1]
+                        self.links.append(self.url+"/"+at[1])
+
         elif tag == "title":
             self.entered_title = True
+
     def handle_endtag(self, tag):
         #print "Encountered an end tag :", tag
         if tag == "title":
