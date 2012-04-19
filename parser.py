@@ -1,55 +1,39 @@
 from HTMLParser import HTMLParser
-
+from urlparse import urljoin
+import config
 
 # create a subclass and override the handler methods
 class LinkFinder(HTMLParser):
+    
+    def handle_links(self,link):
+        #ignore link that end wth spesific extention like 'pdf'.
+        for form in config.ignore:
+            if link.endswith(form):return
+        #normal links are simply added.
+        if link.startswith("http://"):
+            self.links.append(link)
+        #relative links are joined to the main url using builtin function.
+        else:            
+            url = urljoin(self.url,link)
+            self.links.append(url)
+
     def start_parsing(self,content,url = ""):
         #setup variables, and prepare to parse.
-        self.data = ""
         self.links = []
-        self.entered_title=False
         self.title = ""
         if url:
             self.url = url
 
         #parse contets.
         self.feed(content)
-        if self.title== "":
-            self.title = self.data[0:20]
-         
-        return self.links,self.data,self.title
+        return self.links
 
     def handle_starttag(self, tag, attrs):
-        #print "Encountered a start tag:", tag, attrs
+        #get link form a tag.
         if tag== 'a':
             for at in attrs:
                 if at[0]=="href":
-                    #print at[1]
-                    if at[1].startswith("http://"):
-                        self.links.append(at[1])
-                    elif self.url.endswith(at[1]):pass
-                    elif at[1].startswith("/"):
-                        #ind = self.url.rfind('/')
-                        self.links.append( self.url+at[1])
-                    else:
-                        self.links.append(self.url+"/"+at[1])
-
-        elif tag == "title":
-            self.entered_title = True
-
-    def handle_endtag(self, tag):
-        #print "Encountered an end tag :", tag
-        if tag == "title":
-            self.entered_title=False
-    def handle_data(self, data):
-        #print "Encountered some data  :",
-        if self.entered_title:
-            self.title = data
-            #print data
-            
-        self.data += " "+data.lower()
-
-
+                    self. handle_links(at[1])
 
 if __name__=="__main__":
     # instantiate the parser and fed it some HTML
