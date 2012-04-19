@@ -15,5 +15,5 @@ Ex: main.py http://www.python.org
 For more options look at 'config.py'
 ```
 ###Dependancy :
-Python
-Twisted
+* Python
+* Twisted
