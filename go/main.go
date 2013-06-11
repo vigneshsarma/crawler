@@ -15,8 +15,9 @@ var (
 	urlQue = make(chan *url.URL,maxUrlQue)
 	result = make(chan *CrawledResult,maxResult)
 	seedUrl = "http://recruiterbox.com/"
-	noCrawlers = 70
-	noUrlsToCrawl = 500
+	noCrawlers = 100
+	noUrlsToCrawl = 1000
+	goStep = 10
 )
 
 type CrawledResult struct {
@@ -44,12 +45,14 @@ func RecursiveGetUrl(n *html.Node, parrentUrl *url.URL) {
 		for _, a := range n.Attr {
 			if a.Key == "href" {
 				newUrl,err := url.Parse(a.Val)
-				if err == nil && len(urlQue)< maxUrlQue-2 {
-					urlQue <- join(parrentUrl,newUrl)
-				} else if err == nil {
-					fmt.Printf(".") // url droped since we cant handle it.
+				if err == nil {
+					if len(urlQue)< maxUrlQue-2 {
+						urlQue <- join(parrentUrl,newUrl)
+					} // else  {
+					// 	log.Println("ignore", newUrl) // url droped since we cant handle it.
+					// }
 				} else {
-					fmt.Println("errors ",err)
+					log.Println("errors ",err)
 				}
 				break
 			}
@@ -64,18 +67,18 @@ func crawl() {
 	for seed := range urlQue {
 		defer func () {
 			if r := recover(); r != nil {
-				fmt.Println("Recovered in crawl", r,len(urlQue), len(result))
+				log.Println("Recovered in crawl", r,len(urlQue), len(result),seed)
 			}
 		}()
-		// fmt.Println(seed,seed.Scheme,seed.Host,seed.Path)
+		// log.Println(seed,seed.Scheme,seed.Host,seed.Path)
 		resp, err := http.Get(seed.String());
 		defer resp.Body.Close()
 		if err!=nil {
-			fmt.Printf("some error occured  %s\n", err);
+			log.Printf("some error occured  %s\n", err);
 		}
 		if resp.StatusCode==200 {
 			// body, _ := ioutil.ReadAll(resp.Body)
-			// fmt.Printf("Respones %s\n", body);
+			// log.Printf("Respones %s\n", body);
 			z,err := html.Parse(resp.Body)
 			if err != nil {
 				log.Fatal(err)
@@ -83,11 +86,11 @@ func crawl() {
 			if len(result) < maxResult-2 {
 				result <- &CrawledResult{seed, z}
 			} else {
-				fmt.Println("result queue almost at max")
+				log.Println("result queue almost at max")
 			}
 
 		} else {
-			fmt.Printf("Respones %s\n", resp);
+			log.Printf("Respones %s\n", resp);
 		}
 	}
 }
@@ -97,18 +100,30 @@ func main() {
 		seed, _ := url.Parse(seedUrl)
 		urlQue <- seed
 	}()
-	for i := 0; i < noCrawlers; i++ {
+	j := 0;
+	jStep := goStep
+	for  j < noCrawlers && j< jStep {
+		j++
 		go crawl()
 	}
-
+	jStep += goStep
+	log.Println("No go routines :",jStep)
 	i := 0;
 	for u := range result {
 		i++;
-		fmt.Println(i,"crawled",len(result), len(urlQue),u.String());
+		log.Println(i,"crawled",len(result), len(urlQue),u.String());
 		if i > noUrlsToCrawl {
 			close(urlQue)
 			break
 		}
 		RecursiveGetUrl(u.data,u.Url)
+		if j < noCrawlers {
+			for j< jStep {
+				j++
+				go crawl()
+			}
+			jStep += goStep
+			log.Println("No go routines :",jStep)
+		}
 	}
 }
