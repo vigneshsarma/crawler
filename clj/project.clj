@@ -6,5 +6,6 @@
   :dependencies [[org.clojure/clojure "1.5.1"]
                  [clj-http "0.7.9"]
                  [hickory "0.5.3"]
-                 [org.clojure/tools.cli "0.3.1"]]
+                 [org.clojure/tools.cli "0.3.1"]
+                 [org.clojure/core.async "0.1.267.0-0d7780-alpha"]]
   :main clj.core)

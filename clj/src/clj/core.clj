@@ -1,9 +1,17 @@
 (ns clj.core
+  (:refer-clojure :exclude [map reduce into partition partition-by take merge])
   (:require [hickory.core :as hickory]
             [hickory.select :as s]
             [clj-http.client :as client]
-            [clojure.tools.cli :refer [parse-opts]])
+            [clojure.tools.cli :refer [parse-opts]]
+            [clojure.core.async :refer :all :as async ])
   (:import [java.net URL MalformedURLException]))
+
+(def concurancy 6)
+
+(def urls-to-crawl (chan (* concurancy 3)))
+
+(def crawl-result (chan (* concurancy 3)))
 
 (def cli-options
   [["-u" "--initial-url" "Initial url/ seed url"
@@ -24,9 +32,9 @@
         :else
         true))
 
-(defn get-all-links [url]
+(defn get-all-links [url response]
   (let [base-url (URL. url)
-        htree (-> (client/get url) :body hickory/parse hickory/as-hickory)]
+        htree (-> response :body hickory/parse hickory/as-hickory)]
     (loop [elms (-> (s/select (s/child
                    (s/attr :href))
                   htree))
@@ -40,33 +48,64 @@
             :else
             (recur (rest elms) urls)))))
 
-(defn uncrawled-url [crawled urls]
+(defn uncrawled-url [exclude urls]
   (loop [url (first urls)
          urls-to-consider (rest urls)]
-    (if (not (contains? crawled url))
+    (if (not (contains? exclude url))
       url
       (recur (first urls-to-consider)
              (rest urls-to-consider)))))
 
-(defn crawl [url max-urls]
-  (loop [urls #{url}
+
+(defn fetch-url [no]
+  (go-loop []
+    (when-let [url (<! urls-to-crawl)]
+      (try
+        (let [resp (client/get url)]
+        ;; (println (str "Go  " no " : " (resp :status)))
+          (>! crawl-result {:url url
+                            :response resp}))
+        (catch Exception e
+          (println (str "Error: fetch " url " faild.")))))
+    (recur)))
+
+(defn crawl-init [seed-url]
+  (loop [no 0]
+    (if (< no concurancy)
+      (do
+        (fetch-url no)
+        (recur (inc no)))))
+  (>!! urls-to-crawl seed-url))
+
+(defn crawl [seed-url max-urls]
+  (crawl-init seed-url)
+  (loop [urls #{}
+         in-process #{seed-url}
          crawled #{}
-         count 0]
-    (if (>= count max-urls)
-      crawled
-      (let [url-to-crawl (uncrawled-url crawled urls)]
-        (println (str "Url beeing crawled " url-to-crawl))
-        (recur (into urls (try
-                            (get-all-links url-to-crawl)
-                            (catch Exception e #{})))
-               (conj crawled url-to-crawl)
-               (inc count))))))
+         count-urls 0]
+    (cond (>= count-urls max-urls)
+          (do
+            (close! urls-to-crawl)
+            crawled)
+          (or (= (count urls) 0) (>= (count in-process)
+                                     (* concurancy 2)))
+          (let [{:keys [url response]} (<!! crawl-result)]
+            (println (str "Url crawled " url))
+            (recur (clojure.core/into urls (get-all-links url response))
+                   (disj in-process url)
+                   (conj crawled url)
+                   (inc count-urls)))
+          :else
+          (let [url (uncrawled-url
+                     (clojure.core/into crawled in-process) urls)]
+            (>!! urls-to-crawl url)
+            (recur urls (conj in-process url) crawled count-urls)))))
 
 (defn -main [& args]
-  (let [options (parse-opts args cli-options)]
-    (if ((options :options) :help)
+  (let [{:keys [options summary]} (parse-opts args cli-options)]
+    (if (options :help)
       (println (str "Ex: lein run\n"
-                    (options :summary)))
-      (println (str ((options :options) :max-urls)
-                    (crawl ((options :options) :initial-url)
-                           ((options :options) :max-urls)))))))
+                    summary))
+      (println (str (options :max-urls)
+                    (crawl (options :initial-url)
+                           (options :max-urls)))))))
