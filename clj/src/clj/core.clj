@@ -7,11 +7,11 @@
             [clojure.core.async :refer :all :as async ])
   (:import [java.net URL MalformedURLException]))
 
-(def concurancy 6)
+(def concurrency 6)
 
-(def urls-to-crawl (chan (* concurancy 3)))
+(def urls-to-crawl (chan (* concurrency 3)))
 
-(def crawl-result (chan (* concurancy 3)))
+(def crawl-result (chan (* concurrency 3)))
 
 (def cli-options
   [["-u" "--initial-url" "Initial url/ seed url"
@@ -71,7 +71,7 @@
 
 (defn crawl-init [seed-url]
   (loop [no 0]
-    (if (< no concurancy)
+    (if (< no concurrency)
       (do
         (fetch-url no)
         (recur (inc no)))))
@@ -88,7 +88,7 @@
             (close! urls-to-crawl)
             crawled)
           (or (= (count urls) 0) (>= (count in-process)
-                                     (* concurancy 2)))
+                                     (* concurrency 2)))
           (let [{:keys [url response]} (<!! crawl-result)]
             (println (str "Url crawled " url))
             (recur (clojure.core/into urls (get-all-links url response))
